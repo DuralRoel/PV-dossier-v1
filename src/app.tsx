@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from "react";
 import type { MountingInput, Obstacle, PanelInput, RoofInput, LayoutResult } from "./types";
-import ObstaclesTable from "./components/ObstaclesTable";
-import { DrawingSvg } from "./components/DrawingSvg";
-import { buildKeepouts, autoFillPanels, countRows } from "./utils/layoutPanels";
-import { calcRailsAndHooks } from "./utils/calcRailsHooks";
+import ObstaclesTable from "./ObstaclesTable";
+import { DrawingSvg } from "./DrawingSvg";
+import { buildKeepouts, autoFillPanels, countRows } from "./layoutPanels";
+import { calcRailsAndHooks } from "./calcRailsHooks";
 
 const DEFAULTS = {
   roof: {
