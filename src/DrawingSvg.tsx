@@ -16,7 +16,7 @@ export const DrawingSvg = forwardRef<SVGSVGElement, Props>(({ roof, layout, onTo
 
   const scale = Math.min((W - 140) / roofW, (H - 160) / roofH);
   const ox = 70;
-  const oy = 90;
+  const oy = 108; // was 90, nu lager omdat header hoger is
 
   const m2x = (m: number) => ox + m * scale;
   const m2y = (m: number) => oy + (roofH - m) * scale;
@@ -43,9 +43,14 @@ export const DrawingSvg = forwardRef<SVGSVGElement, Props>(({ roof, layout, onTo
 
   return (
     <svg ref={ref} viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" className="svg">
-      <rect x="0" y="0" width={W} height="52" fill="#0b1220" />
+      {/* Header */}
+      <rect x="0" y="0" width={W} height="70" fill="#0b1220" />
       <text x="18" y="33" fill="#fff" fontSize="16" fontFamily="Arial" fontWeight="700">
         Dakplan – panelen – rails – haken (V2.5)
+      </text>
+      <text x="18" y="55" fill="rgba(255,255,255,0.85)" fontSize="12" fontFamily="Arial">
+        Keperverdeling indicatief – definitieve verankering te bepalen op werf (haakposities mogen afwijken binnen
+        toegelaten tolerantie).
       </text>
 
       {/* Roof outline */}
@@ -114,25 +119,24 @@ export const DrawingSvg = forwardRef<SVGSVGElement, Props>(({ roof, layout, onTo
         const isStart = i === startHookIndex;
         return (
           <g key={i}>
+            {/* altijd zwart (indicatief), start haak oranje */}
             <circle
               cx={m2x(h.x)}
               cy={m2y(h.y)}
               r={isStart ? 7 : 4}
-              fill={isStart ? "#f59e0b" : h.snapped ? "#111827" : "#ef4444"}
+              fill={isStart ? "#f59e0b" : "#111827"}
               stroke={isStart ? "#111827" : "none"}
               strokeWidth={isStart ? 2 : 0}
             />
             <line x1={m2x(h.x)} y1={m2y(h.y)} x2={m2x(h.x)} y2={m2y(h.y) - 12} stroke="#111827" strokeWidth="2" />
+
+            {/* Alleen keperlabel tonen als er effectief gesnapt is */}
             {h.snapped && h.rafterIndex !== null && (
               <text x={m2x(h.x) + 6} y={m2y(h.y) - 14} fontSize="10" fontFamily="Arial" fill="#0f172a">
                 K{h.rafterIndex} ({h.rafterX?.toFixed(2)}m)
               </text>
             )}
-            {!h.snapped && (
-              <text x={m2x(h.x) + 6} y={m2y(h.y) - 14} fontSize="10" fontFamily="Arial" fill="#ef4444">
-                (geen keper snap)
-              </text>
-            )}
+
             {isStart && (
               <text x={m2x(h.x) + 6} y={m2y(h.y) + 16} fontSize="12" fontFamily="Arial" fontWeight="700" fill="#b45309">
                 START – 1e haak
@@ -166,7 +170,7 @@ export const DrawingSvg = forwardRef<SVGSVGElement, Props>(({ roof, layout, onTo
 
         <circle cx={W - 306} cy={184} r="4" fill="#111827" />
         <text x={W - 290} y={188} fontFamily="Arial" fontSize="11" fill="#0f172a">
-          Haak (gesnapt)
+          Haak (indicatieve positie)
         </text>
 
         <circle cx={W - 306} cy={204} r="7" fill="#f59e0b" stroke="#111827" strokeWidth="2" />
@@ -179,4 +183,3 @@ export const DrawingSvg = forwardRef<SVGSVGElement, Props>(({ roof, layout, onTo
 });
 
 DrawingSvg.displayName = "DrawingSvg";
-
