@@ -1,6 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./app";
-import "./styles.css";
+import { initProductsFromCloud } from "./products";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
+async function bootstrap() {
+  await initProductsFromCloud();
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}
+
+bootstrap();
