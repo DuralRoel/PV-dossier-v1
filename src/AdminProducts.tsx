@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import {
   PanelProduct,
   InverterProduct,
+  makeId,
   getPanels,
   getInverters,
   upsertPanels,
@@ -40,10 +41,6 @@ function toNumber(v: any): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function makeId(brand: string, model: string) {
-  return `${brand.trim()}|${model.trim()}`;
-}
-
 function parsePanels(rows: Record<string, any>[]): PanelProduct[] {
   const out: PanelProduct[] = [];
 
@@ -52,25 +49,11 @@ function parsePanels(rows: Record<string, any>[]): PanelProduct[] {
     const model = String(pick(r, ["model", "type", "naam", "name"]) ?? "").trim();
     if (!brand || !model) continue;
 
-    const wp = toNumber(pick(r, ["wp", "pmax", "vermogenwp"])) ?? 0;
-    const voc_v = toNumber(pick(r, ["voc", "voc_v", "opencircuitvoltage", "openklemspanning"])) ?? 0;
+    const wp = toNumber(pick(r, ["wp", "pmax"])) ?? 0;
+    const voc_v = toNumber(pick(r, ["voc", "voc_v"])) ?? 0;
+    const width_m = toNumber(pick(r, ["width_m"])) ?? 0;
+    const height_m = toNumber(pick(r, ["height_m"])) ?? 0;
 
-    const vmp_v = toNumber(pick(r, ["vmpp", "vmp", "vmp_v", "mppvoltage"]));
-    const imp_a = toNumber(pick(r, ["impp", "imp", "imp_a", "mppcurrent"]));
-
-    let width_m = toNumber(pick(r, ["width_m", "breedte_m", "widthm"]));
-    let height_m = toNumber(pick(r, ["height_m", "hoogte_m", "heightm"]));
-
-    const width_mm = toNumber(pick(r, ["width_mm", "breedte_mm", "widthmm", "breedtemm"]));
-    const height_mm = toNumber(pick(r, ["height_mm", "hoogte_mm", "heightmm", "hoogtemm"]));
-
-    if (!width_m && width_mm) width_m = width_mm / 1000;
-    if (!height_m && height_mm) height_m = height_mm / 1000;
-
-    const notes = String(pick(r, ["notes", "opmerking", "opmerkingen"]) ?? "").trim() || undefined;
-    const datasheet_url = String(pick(r, ["datasheet_url", "datasheet", "url"]) ?? "").trim() || undefined;
-
-    // minimale validatie
     if (!wp || !voc_v || !width_m || !height_m) continue;
 
     out.push({
@@ -79,42 +62,24 @@ function parsePanels(rows: Record<string, any>[]): PanelProduct[] {
       model,
       wp,
       voc_v,
-      vmp_v,
-      imp_a,
       width_m,
       height_m,
-      notes,
-      datasheet_url,
     });
   }
 
-  // dedupe op id
-  const byId = new Map<string, PanelProduct>();
-  for (const p of out) byId.set(p.id, p);
-  return Array.from(byId.values());
+  return Array.from(new Map(out.map(p => [p.id, p])).values());
 }
 
 function parseInverters(rows: Record<string, any>[]): InverterProduct[] {
   const out: InverterProduct[] = [];
 
   for (const r of rows) {
-    const brand = String(pick(r, ["brand", "merk", "fabrikant"]) ?? "").trim();
-    const model = String(pick(r, ["model", "type", "naam", "name"]) ?? "").trim();
+    const brand = String(pick(r, ["brand", "merk"]) ?? "").trim();
+    const model = String(pick(r, ["model", "type"]) ?? "").trim();
     if (!brand || !model) continue;
 
-    const voc_min_v = toNumber(pick(r, ["voc_min_v", "vdcmin", "min_dc_v", "minDC", "dcmin"])) ?? 0;
-    const voc_max_v = toNumber(pick(r, ["voc_max_v", "vdcmax", "max_dc_v", "maxDC", "dcmax", "maxdc", "maxdcv"])) ?? 0;
-
-    const mppt_min_v = toNumber(pick(r, ["mppt_min_v", "mpptmin", "mpptminv"]));
-    const mppt_max_v = toNumber(pick(r, ["mppt_max_v", "mpptmax", "mpptmaxv"]));
-    const mppt_count = toNumber(pick(r, ["mppt_count", "aantalmppt", "mpptcount"]));
-    const strings_per_mppt = toNumber(pick(r, ["strings_per_mppt", "stringspermppt", "strings"]));
-    const ac_power_w = toNumber(pick(r, ["ac_power_w", "acpower", "pac", "vermogenac"]));
-    const max_dc_power_w = toNumber(pick(r, ["max_dc_power_w", "maxdcpower", "pdcmax", "maxdcvermogen"]));
-
-    const notes = String(pick(r, ["notes", "opmerking", "opmerkingen"]) ?? "").trim() || undefined;
-    const datasheet_url = String(pick(r, ["datasheet_url", "datasheet", "url"]) ?? "").trim() || undefined;
-
+    const voc_min_v = toNumber(pick(r, ["voc_min_v", "voc_min"])) ?? 0;
+    const voc_max_v = toNumber(pick(r, ["voc_max_v", "voc_max"])) ?? 0;
     if (!voc_min_v || !voc_max_v) continue;
 
     out.push({
@@ -123,299 +88,74 @@ function parseInverters(rows: Record<string, any>[]): InverterProduct[] {
       model,
       voc_min_v,
       voc_max_v,
-      mppt_min_v,
-      mppt_max_v,
-      mppt_count: mppt_count ? Math.round(mppt_count) : undefined,
-      strings_per_mppt: strings_per_mppt ? Math.round(strings_per_mppt) : undefined,
-      ac_power_w,
-      max_dc_power_w,
-      notes,
-      datasheet_url,
+      mppt_min_v: toNumber(pick(r, ["mppt_min_v"])),
+      mppt_max_v: toNumber(pick(r, ["mppt_max_v"])),
+      mppt_count: toNumber(pick(r, ["mppt_count"])),
+      strings_per_mppt: toNumber(pick(r, ["strings_per_mppt"])),
+      ac_power_w: toNumber(pick(r, ["ac_power_w"])),
+      max_dc_power_w: toNumber(pick(r, ["max_dc_power_w"])),
     });
   }
 
-  const byId = new Map<string, InverterProduct>();
-  for (const p of out) byId.set(p.id, p);
-  return Array.from(byId.values());
+  return Array.from(new Map(out.map(p => [p.id, p])).values());
 }
 
-async function readExcel(file: File): Promise<{ panels: PanelProduct[]; inverters: InverterProduct[] }> {
+async function readExcel(file: File) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
 
-  // sheet1 als basis
-  const sheetName = wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: "" });
+  let panels: PanelProduct[] = [];
+  let inverters: InverterProduct[] = [];
 
-  const hasPanelCols =
-    rows.length &&
-    (Object.keys(rows[0]).some((k) => norm(k).includes("wp")) || Object.keys(rows[0]).some((k) => norm(k).includes("voc")));
+  if (wb.Sheets["panels"]) {
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets["panels"], { defval: "" });
+    panels = parsePanels(rows);
+  }
 
-  const hasInverterCols =
-    rows.length &&
-    (Object.keys(rows[0]).some((k) => norm(k).includes("mppt")) ||
-      Object.keys(rows[0]).some((k) => norm(k).includes("ac_power")) ||
-      Object.keys(rows[0]).some((k) => norm(k).includes("voc_min")));
+  if (wb.Sheets["inverters"]) {
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets["inverters"], { defval: "" });
+    inverters = parseInverters(rows);
+  }
 
-  const panels = hasPanelCols ? parsePanels(rows) : [];
-  const inverters = hasInverterCols ? parseInverters(rows) : [];
+  // fallback indien geen named sheets
+  if (!panels.length && !inverters.length) {
+    const sheetName = wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[sheetName], { defval: "" });
+    panels = parsePanels(rows);
+    inverters = parseInverters(rows);
+  }
 
   return { panels, inverters };
 }
 
 export default function AdminProducts() {
-  const [adminUser, setAdminUser] = React.useState(localStorage.getItem(LS_ADMIN_USER) ?? "");
-  const [adminPass, setAdminPass] = React.useState(localStorage.getItem(LS_ADMIN_PASS) ?? "");
-
-  const [busy, setBusy] = React.useState(false);
-  const [msg, setMsg] = React.useState<string>("");
-
-  const [importedPanels, setImportedPanels] = React.useState<PanelProduct[]>([]);
-  const [importedInverters, setImportedInverters] = React.useState<InverterProduct[]>([]);
-
-  const [localPanelsCount, setLocalPanelsCount] = React.useState(getPanels().length);
-  const [localInvertersCount, setLocalInvertersCount] = React.useState(getInverters().length);
-
-  async function refreshLocalCounts() {
-    setLocalPanelsCount(getPanels().length);
-    setLocalInvertersCount(getInverters().length);
-  }
+  const [msg, setMsg] = React.useState("");
 
   async function handleFile(file: File) {
-    setBusy(true);
-    setMsg("");
     try {
       const { panels, inverters } = await readExcel(file);
-      setImportedPanels(panels);
-      setImportedInverters(inverters);
-
-      setMsg(
-        `Excel gelezen. Panels: ${panels.length} — Inverters: ${inverters.length}. ` +
-          `Klik "Importeer lokaal (merge)" om samen te voegen met de huidige lijst.`
-      );
+      upsertPanels(panels);
+      upsertInverters(inverters);
+      setMsg(`✅ Panels: ${panels.length} — Inverters: ${inverters.length} geïmporteerd`);
     } catch (e: any) {
-      setMsg(e?.message || "Excel import mislukt");
-    } finally {
-      setBusy(false);
+      setMsg(e?.message || "Import mislukt");
     }
   }
-
-  async function importLocal() {
-    setBusy(true);
-    setMsg("");
-    try {
-      if (!importedPanels.length && !importedInverters.length) {
-        throw new Error("Geen producten om te importeren (Excel bevatte niets herkenbaar).");
-      }
-
-      if (importedPanels.length) upsertPanels(importedPanels);
-      if (importedInverters.length) upsertInverters(importedInverters);
-
-      await refreshLocalCounts();
-
-      setMsg(
-        `✅ Lokaal geïmporteerd. Local panels=${getPanels().length}, inverters=${getInverters().length}. ` +
-          `Nu kan je "Push to Cloud" doen zodat iedereen dezelfde lijst krijgt.`
-      );
-    } catch (e: any) {
-      setMsg(e?.message || "Import lokaal mislukt");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function pushCloud() {
-    setBusy(true);
-    setMsg("");
-    try {
-      if (!adminUser || !adminPass) throw new Error("Admin user/pass ontbreekt.");
-      if (getPanels().length === 0 && getInverters().length === 0) {
-        throw new Error("Je lokale lijst is leeg. Pull eerst cloud of importeer eerst Excel.");
-      }
-
-      localStorage.setItem(LS_ADMIN_USER, adminUser);
-      localStorage.setItem(LS_ADMIN_PASS, adminPass);
-
-      // pusht de huidige lokale lijst (panels + inverters) naar KV
-      await pushProductsToCloud(adminUser, adminPass);
-
-      await refreshLocalCounts();
-      setMsg("✅ Naar cloud gepusht. Alle gebruikers krijgen nu dezelfde productlijst.");
-    } catch (e: any) {
-      setMsg(e?.message || "Push naar cloud mislukt");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function pullCloud() {
-    setBusy(true);
-    setMsg("");
-    try {
-      // laadt cloud → lokale cache/localStorage
-      await initProductsFromCloud();
-      await refreshLocalCounts();
-      setMsg("✅ Cloud geladen naar lokaal (cache).");
-    } catch (e: any) {
-      setMsg(e?.message || "Cloud laden mislukt");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function clearLocalAll() {
-    clearProducts();
-    await refreshLocalCounts();
-    setImportedPanels([]);
-    setImportedInverters([]);
-    setMsg("Local storage gewist (terug naar defaults).");
-  }
-
-  const canImport = importedPanels.length > 0 || importedInverters.length > 0;
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <h2 style={{ margin: "0 0 6px" }}>Admin – Productbeheer</h2>
-      <div style={{ opacity: 0.75, marginBottom: 16 }}>
-        Excel import → lokaal samenvoegen → push naar Cloudflare KV. Users zien automatisch dezelfde dropdown items.
-      </div>
+    <div style={{ padding: 24 }}>
+      <h2>Admin – Excel Import</h2>
 
-      <div style={box}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <label style={label}>
-            Admin user
-            <input style={input} value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder="bv. admin" />
-          </label>
+      <input
+        type="file"
+        accept=".xlsx,.xls"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+        }}
+      />
 
-          <label style={label}>
-            Admin pass
-            <input style={input} value={adminPass} onChange={(e) => setAdminPass(e.target.value)} placeholder="••••••••" type="password" />
-          </label>
-
-          <button style={btn} disabled={busy} onClick={pullCloud}>
-            Pull from Cloud
-          </button>
-
-          <button style={btnPrimary} disabled={busy} onClick={pushCloud}>
-            Push to Cloud
-          </button>
-        </div>
-
-        <div style={{ marginTop: 10, opacity: 0.8 }}>
-          Local panels: <b>{localPanelsCount}</b> — Local inverters: <b>{localInvertersCount}</b>
-        </div>
-
-        <div style={{ marginTop: 8, opacity: 0.7 }}>
-          Tip: eerst <b>Pull</b> (laatste cloud versie) → dan Excel import/merge → dan <b>Push</b>.
-        </div>
-      </div>
-
-      <div style={box}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Excel upload</div>
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-              }}
-            />
-            <div style={{ marginTop: 10, opacity: 0.8 }}>
-              Parsed panels: <b>{importedPanels.length}</b> — Parsed inverters: <b>{importedInverters.length}</b>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
-            <button style={btn} disabled={busy || !canImport} onClick={importLocal}>
-              Importeer lokaal (merge)
-            </button>
-            <button style={btnDanger} disabled={busy} onClick={clearLocalAll}>
-              Clear lokaal
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {msg && <div style={msgBox}>{msg}</div>}
-
-      <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div style={box}>
-          <div style={{ fontWeight: 700, marginBottom: 10 }}>Preview panels (max 15)</div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {importedPanels.slice(0, 15).map((p) => (
-              <li key={p.id}>
-                {p.brand} — {p.model} ({p.wp}Wp)
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div style={box}>
-          <div style={{ fontWeight: 700, marginBottom: 10 }}>Preview inverters (max 15)</div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {importedInverters.slice(0, 15).map((p) => (
-              <li key={p.id}>
-                {p.brand} — {p.model} (DC {p.voc_min_v}-{p.voc_max_v}V)
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      {msg && <div style={{ marginTop: 12 }}>{msg}</div>}
     </div>
   );
 }
-
-const box: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid rgba(0,0,0,0.10)",
-  borderRadius: 12,
-  padding: 16,
-  marginBottom: 12,
-};
-
-const label: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-};
-
-const input: React.CSSProperties = {
-  height: 38,
-  padding: "0 10px",
-  borderRadius: 10,
-  border: "1px solid rgba(0,0,0,0.20)",
-  minWidth: 220,
-};
-
-const btn: React.CSSProperties = {
-  height: 38,
-  padding: "0 14px",
-  borderRadius: 10,
-  border: "1px solid rgba(0,0,0,0.20)",
-  background: "#fff",
-  cursor: "pointer",
-};
-
-const btnPrimary: React.CSSProperties = {
-  ...btn,
-  background: "#111827",
-  color: "#fff",
-};
-
-const btnDanger: React.CSSProperties = {
-  ...btn,
-  background: "#991b1b",
-  color: "#fff",
-  border: "1px solid rgba(0,0,0,0.10)",
-};
-
-const msgBox: React.CSSProperties = {
-  marginTop: 12,
-  padding: 12,
-  border: "1px solid rgba(0,0,0,0.12)",
-  borderRadius: 10,
-  background: "#fff",
-};
