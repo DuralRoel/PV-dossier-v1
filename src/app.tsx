@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { MountingInput, Obstacle, PanelInput, RoofInput, LayoutResult, Rect, InverterInput } from "./types";
 import ObstaclesTable from "./ObstaclesTable";
 import { DrawingSvg } from "./DrawingSvg";
@@ -72,7 +72,20 @@ function resolveOrientation(panel: PanelInput, roof: RoofInput, keepouts: Rect[]
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"dossier" | "admin">("dossier");
+  // ✅ Start tab op basis van hash (/#admin opent Admin)
+  const initialTab = typeof window !== "undefined" && window.location.hash === "#admin" ? "admin" : "dossier";
+  const [tab, setTab] = useState<"dossier" | "admin">(initialTab);
+
+  // ✅ Houd tab synchroon met hash wijzigingen (bv. user plakt #admin)
+  useEffect(() => {
+    const onHashChange = () => {
+      setTab(window.location.hash === "#admin" ? "admin" : "dossier");
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // ✅ Jouw bestaande adminMode (lokaal) blijft bestaan
   const [adminMode, setAdminMode] = useState(false);
 
   const [roof, setRoof] = useState<RoofInput>(DEFAULTS.roof);
@@ -87,9 +100,9 @@ export default function App() {
   // panel clicks remove from base selection
   const [removedBaseIdx, setRemovedBaseIdx] = useState<Set<number>>(new Set());
 
-  // products (Route A localStorage)
-  const panelsList = useMemo(() => getPanels(), [tab]);
-  const invertersList = useMemo(() => getInverters(), [tab]);
+  // ✅ Products: lees per render (geen "vastgeplakte" useMemo op tab)
+  const panelsList = getPanels();
+  const invertersList = getInverters();
 
   const [selectedPanelId, setSelectedPanelId] = useState<string>(panelsList[0]?.id ?? makeId("AIKO", "Neostar 3S+ 450"));
   const [selectedInverterId, setSelectedInverterId] = useState<string>(invertersList[0]?.id ?? makeId("Huawei", "SUN2000-6KTL-M1"));
@@ -202,16 +215,23 @@ export default function App() {
     });
   }
 
+  // ✅ Tab switch die ook hash meeneemt
+  function goTab(next: "dossier" | "admin") {
+    setTab(next);
+    if (next === "admin") window.location.hash = "#admin";
+    else window.location.hash = "";
+  }
+
   return (
     <div className="page">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h2>PV Dossier – V2.8</h2>
 
         <div className="row">
-          <button className={tab === "dossier" ? "btn" : "btnGhost"} onClick={() => setTab("dossier")}>
+          <button className={tab === "dossier" ? "btn" : "btnGhost"} onClick={() => goTab("dossier")}>
             Dossier
           </button>
-          <button className={tab === "admin" ? "btn" : "btnGhost"} onClick={() => setTab("admin")}>
+          <button className={tab === "admin" ? "btn" : "btnGhost"} onClick={() => goTab("admin")}>
             Admin
           </button>
 
@@ -259,7 +279,7 @@ export default function App() {
                 </label>
               </div>
 
-              <p className="muted">Users kiezen enkel producten. Admin kan producten importeren via CSV (tab Admin).</p>
+              <p className="muted">Users kiezen enkel producten. Admin kan producten importeren en pushen via tab Admin.</p>
 
               {adminMode && (
                 <div className="grid2">
