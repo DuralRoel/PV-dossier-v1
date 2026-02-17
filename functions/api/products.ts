@@ -1,12 +1,26 @@
+type Payload = {
+  version: string;
+  updatedAt: string;
+  panels: any[];
+  inverters: any[];
+};
+
+const KEY = "products.v1.json";
+
 export const onRequestGet: PagesFunction<{
   PV_PRODUCTS: KVNamespace;
 }> = async ({ env }) => {
-  const value = await env.PV_PRODUCTS.get("products.json");
+  const value = await env.PV_PRODUCTS.get(KEY);
+
   if (!value) {
-    return Response.json({
+    const empty: Payload = {
       version: "1.0",
       updatedAt: new Date().toISOString(),
-      products: [],
+      panels: [],
+      inverters: [],
+    };
+    return Response.json(empty, {
+      headers: { "Cache-Control": "no-store" },
     });
   }
 
@@ -48,24 +62,26 @@ export const onRequestPut: PagesFunction<{
 
   const body = await request.json().catch(() => null);
 
-  if (!body || !Array.isArray(body.products)) {
+  if (!body || !Array.isArray(body.panels) || !Array.isArray(body.inverters)) {
     return Response.json(
-      { error: "Invalid payload. Expected { products: [...] }" },
+      { error: "Invalid payload. Expected { panels: [...], inverters: [...] }" },
       { status: 400 }
     );
   }
 
-  const payload = {
+  const payload: Payload = {
     version: body.version ?? "1.0",
     updatedAt: new Date().toISOString(),
-    products: body.products,
+    panels: body.panels,
+    inverters: body.inverters,
   };
 
-  await env.PV_PRODUCTS.put("products.json", JSON.stringify(payload));
+  await env.PV_PRODUCTS.put(KEY, JSON.stringify(payload));
 
   return Response.json({
     ok: true,
     updatedAt: payload.updatedAt,
-    count: payload.products.length,
+    panelsCount: payload.panels.length,
+    invertersCount: payload.inverters.length,
   });
 };
