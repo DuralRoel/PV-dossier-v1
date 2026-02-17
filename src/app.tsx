@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import type { MountingInput, Obstacle, PanelInput, RoofInput, LayoutResult, Rect, InverterInput } from "./types";
 import ObstaclesTable from "./ObstaclesTable";
 import { DrawingSvg } from "./DrawingSvg";
@@ -72,20 +72,7 @@ function resolveOrientation(panel: PanelInput, roof: RoofInput, keepouts: Rect[]
 }
 
 export default function App() {
-  // ✅ Start tab op basis van hash (/#admin opent Admin)
-  const initialTab = typeof window !== "undefined" && window.location.hash === "#admin" ? "admin" : "dossier";
-  const [tab, setTab] = useState<"dossier" | "admin">(initialTab);
-
-  // ✅ Houd tab synchroon met hash wijzigingen (bv. user plakt #admin)
-  useEffect(() => {
-    const onHashChange = () => {
-      setTab(window.location.hash === "#admin" ? "admin" : "dossier");
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
-
-  // ✅ Jouw bestaande adminMode (lokaal) blijft bestaan
+  const [tab, setTab] = useState<"dossier" | "admin">("dossier");
   const [adminMode, setAdminMode] = useState(false);
 
   const [roof, setRoof] = useState<RoofInput>(DEFAULTS.roof);
@@ -97,17 +84,15 @@ export default function App() {
   const [targetCount, setTargetCount] = useState<number>(12);
   const [maximize, setMaximize] = useState<boolean>(false);
 
-  // panel clicks remove from base selection
   const [removedBaseIdx, setRemovedBaseIdx] = useState<Set<number>>(new Set());
 
-  // ✅ Products: lees per render (geen "vastgeplakte" useMemo op tab)
-  const panelsList = getPanels();
-  const invertersList = getInverters();
+  // products (localStorage)
+  const panelsList = useMemo(() => getPanels(), [tab]);
+  const invertersList = useMemo(() => getInverters(), [tab]);
 
   const [selectedPanelId, setSelectedPanelId] = useState<string>(panelsList[0]?.id ?? makeId("AIKO", "Neostar 3S+ 450"));
   const [selectedInverterId, setSelectedInverterId] = useState<string>(invertersList[0]?.id ?? makeId("Huawei", "SUN2000-6KTL-M1"));
 
-  // cable settings
   const [cableSettings, setCableSettings] = useState<CableSettings>({
     exitMode: "RT",
     exitCustom: undefined,
@@ -118,17 +103,14 @@ export default function App() {
   });
   const [pickingExit, setPickingExit] = useState(false);
 
-  // rail stock settings
   const [railStockSettings, setRailStockSettings] = useState<RailStockSettings>({
     stockLength_m: 6.0,
     minReusable_m: 2.0,
   });
 
-  // selected products
   const selectedPanel = useMemo(() => panelsList.find((p) => p.id === selectedPanelId), [panelsList, selectedPanelId]);
   const selectedInv = useMemo(() => invertersList.find((p) => p.id === selectedInverterId), [invertersList, selectedInverterId]);
 
-  // apply selected products to inputs
   const effectivePanel = useMemo(() => {
     if (!selectedPanel) return panel;
     return { ...panel, panelW_m: selectedPanel.width_m, panelH_m: selectedPanel.height_m, wp: selectedPanel.wp, voc: selectedPanel.voc_v };
@@ -158,7 +140,6 @@ export default function App() {
     [effectivePanel, roof, keepouts, targetCount, maximize]
   );
 
-  // base panels: start left-top (sorted)
   const basePanels = useMemo(() => {
     const all = orientationResolved.resolved === "portrait" ? orientationResolved.panelsPortrait : orientationResolved.panelsLandscape;
     const sorted = sortTopLeftFirst(all);
@@ -166,7 +147,6 @@ export default function App() {
     return sorted.slice(0, goal);
   }, [orientationResolved, targetCount, maximize]);
 
-  // placed panels after click-removals
   const placedPanels = useMemo(() => basePanels.filter((_, i) => !removedBaseIdx.has(i)), [basePanels, removedBaseIdx]);
 
   const layout: LayoutResult = useMemo(() => {
@@ -176,7 +156,6 @@ export default function App() {
   }, [keepouts, placedPanels, roof, mount]);
 
   const maxPossible = useMemo(() => Math.max(orientationResolved.maxPortrait, orientationResolved.maxLandscape), [orientationResolved]);
-
   const totalWp = useMemo(() => layout.panels.length * (effectivePanel.wp || 0), [layout.panels.length, effectivePanel.wp]);
 
   const strings = useMemo(() => calcStrings(layout.panels.length, effectivePanel, effectiveInverter), [
@@ -186,7 +165,6 @@ export default function App() {
   ]);
 
   const cable = useMemo(() => calcCable(layout.panels, roof, strings.strings, cableSettings), [layout.panels, roof, strings.strings, cableSettings]);
-
   const railStock = useMemo(() => calcRailStock(layout.rails, railStockSettings), [layout.rails, railStockSettings]);
 
   function reapplyTarget() {
@@ -194,7 +172,6 @@ export default function App() {
   }
 
   function togglePanel(idxInPlaced: number) {
-    // map visible index -> base index (skip removed)
     let baseIndex = -1;
     let seen = -1;
     for (let i = 0; i < basePanels.length; i++) {
@@ -215,28 +192,28 @@ export default function App() {
     });
   }
 
-  // ✅ Tab switch die ook hash meeneemt
-  function goTab(next: "dossier" | "admin") {
-    setTab(next);
-    if (next === "admin") window.location.hash = "#admin";
-    else window.location.hash = "";
-  }
-
   return (
     <div className="page">
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h2>PV Dossier – V2.8</h2>
+      <div className="topbar">
+        <div className="brand">
+          <img src="/Logo%20Standaard%20RGB.png" alt="Dural Bouwgroep" />
+          <div className="brandTitle">
+            <div className="title">PV Dossier</div>
+            <div className="sub">V2.8</div>
+          </div>
+        </div>
 
         <div className="row">
-          <button className={tab === "dossier" ? "btn" : "btnGhost"} onClick={() => goTab("dossier")}>
+          <button className={tab === "dossier" ? "btn" : "btnGhost"} onClick={() => setTab("dossier")}>
             Dossier
           </button>
-          <button className={tab === "admin" ? "btn" : "btnGhost"} onClick={() => goTab("admin")}>
+          <button className={tab === "admin" ? "btn" : "btnGhost"} onClick={() => setTab("admin")}>
             Admin
           </button>
 
-          <label className="muted" style={{ marginLeft: 10 }}>
-            <input type="checkbox" checked={adminMode} onChange={(e) => setAdminMode(e.target.checked)} /> admin mode (lokaal)
+          <label className="muted" style={{ marginLeft: 10, display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={adminMode} onChange={(e) => setAdminMode(e.target.checked)} />
+            admin mode (lokaal)
           </label>
         </div>
       </div>
@@ -279,10 +256,10 @@ export default function App() {
                 </label>
               </div>
 
-              <p className="muted">Users kiezen enkel producten. Admin kan producten importeren en pushen via tab Admin.</p>
+              <p className="muted">Users kiezen enkel producten. Admin beheert producten via tab Admin.</p>
 
               {adminMode && (
-                <div className="grid2">
+                <div className="grid2" style={{ marginTop: 10 }}>
                   <label>
                     Paneel gap (m)
                     <input
@@ -375,7 +352,7 @@ export default function App() {
                 </label>
               </div>
 
-              <div className="row" style={{ marginTop: 10 }}>
+              <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
                 <button className="btnGhost" onClick={() => setRemovedBaseIdx(new Set())}>
                   Reset weggeklikte panelen
                 </button>
@@ -384,7 +361,7 @@ export default function App() {
                 </div>
               </div>
 
-              <p className="muted">
+              <p className="muted" style={{ marginTop: 10 }}>
                 Max: Portrait {orientationResolved.maxPortrait} • Landscape {orientationResolved.maxLandscape} • Gekozen: <b>{orientationResolved.resolved}</b>
                 {!maximize && targetCount > maxPossible ? ` • ⚠ doel (${targetCount}) > max (${maxPossible})` : ""}
               </p>
@@ -410,7 +387,7 @@ export default function App() {
                   <input type="number" step="0.01" value={mount.maxEndDist_m} onChange={(e) => setMount({ ...mount, maxEndDist_m: +e.target.value })} />
                 </label>
               </div>
-              <p className="muted">Regels: max 20cm vanaf veld-einde • ~100cm tussen haken • keperlabels indicatief.</p>
+              <p className="muted" style={{ marginTop: 10 }}>Regels: max 20cm vanaf veld-einde • ~100cm tussen haken • keperlabels indicatief.</p>
             </div>
 
             <div className="card">
@@ -464,12 +441,12 @@ export default function App() {
                 />
               </label>
 
-              <div className="row" style={{ marginTop: 10 }}>
+              <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
                 <button className="btnGhost" onClick={() => setPickingExit(true)} disabled={cableSettings.exitMode !== "CUSTOM"}>
                   Exit kiezen op plan
                 </button>
                 <div className="muted">
-                  Dak: <b>{cable.totalOnRoof_m.toFixed(1)} m</b> • + extra: <b>{cableSettings.extraToInverter_m.toFixed(1)} m</b> • aanbevolen incl. {cableSettings.slackPercent}%:{" "}
+                  Dak: <b>{cable.totalOnRoof_m.toFixed(1)} m</b> • + extra: <b>{cableSettings.extraToInverter_m.toFixed(1)} m</b> • incl. {cableSettings.slackPercent}%:{" "}
                   <b>{cable.totalRecommended_m.toFixed(1)} m</b>
                 </div>
               </div>
@@ -494,55 +471,25 @@ export default function App() {
                 </label>
               </div>
 
-              <div className="kpis">
-                <div>
-                  <b>Totaal rail (m)</b>
-                  {railStock.totalRail_m.toFixed(1)}
-                </div>
-                <div>
-                  <b>Stuks</b>
-                  {railStock.stockPieces}
-                </div>
-                <div>
-                  <b>Totaal stock (m)</b>
-                  {railStock.stockTotal_m.toFixed(1)}
-                </div>
-                <div>
-                  <b>Afval (m)</b>
-                  {railStock.scrap_m.toFixed(1)}
-                </div>
-                <div>
-                  <b>Herbruikbaar (m)</b>
-                  {railStock.reusableOffcuts_m.toFixed(1)}
-                </div>
+              <div className="kpis" style={{ marginTop: 10 }}>
+                <div><b>Totaal rail (m)</b>{railStock.totalRail_m.toFixed(1)}</div>
+                <div><b>Stuks</b>{railStock.stockPieces}</div>
+                <div><b>Totaal stock (m)</b>{railStock.stockTotal_m.toFixed(1)}</div>
+                <div><b>Afval (m)</b>{railStock.scrap_m.toFixed(1)}</div>
+                <div><b>Herbruikbaar (m)</b>{railStock.reusableOffcuts_m.toFixed(1)}</div>
               </div>
 
-              <p className="muted">Conservatief model: elk railsegment wordt uit stock gezaagd; rest &lt; min herbruikbaar = afval.</p>
+              <p className="muted" style={{ marginTop: 10 }}>Conservatief model: elk railsegment wordt uit stock gezaagd; rest &lt; min herbruikbaar = afval.</p>
             </div>
 
             <div className="card">
               <h3>Omvormer info</h3>
-              <div className="kpis">
-                <div>
-                  <b>Merk</b>
-                  {effectiveInverter.brand}
-                </div>
-                <div>
-                  <b>Type</b>
-                  {effectiveInverter.model}
-                </div>
-                <div>
-                  <b>Voc range</b>
-                  {effectiveInverter.vocMin}–{effectiveInverter.vocMax} V
-                </div>
-                <div>
-                  <b>MPPT</b>
-                  {effectiveInverter.mpptCount ?? "-"}
-                </div>
-                <div>
-                  <b>AC</b>
-                  {effectiveInverter.acPowerW ?? "-"} W
-                </div>
+              <div className="kpis" style={{ marginTop: 10 }}>
+                <div><b>Merk</b>{effectiveInverter.brand}</div>
+                <div><b>Type</b>{effectiveInverter.model}</div>
+                <div><b>Voc range</b>{effectiveInverter.vocMin}–{effectiveInverter.vocMax} V</div>
+                <div><b>MPPT</b>{effectiveInverter.mpptCount ?? "-"}</div>
+                <div><b>AC</b>{effectiveInverter.acPowerW ?? "-"} W</div>
               </div>
             </div>
 
@@ -558,79 +505,43 @@ export default function App() {
           <div>
             <div className="card">
               <h3>Resultaat</h3>
-              <div className="kpis">
-                <div>
-                  <b>Panelen</b>
-                  {layout.panels.length}
-                </div>
-                <div>
-                  <b>Vermogen</b>
-                  {totalWp} Wp
-                </div>
-                <div>
-                  <b>Rijen</b>
-                  {layout.rowsCount}
-                </div>
-                <div>
-                  <b>Rails</b>
-                  {layout.rails.length}
-                </div>
-                <div>
-                  <b>Haken</b>
-                  {layout.hooks.length}
-                </div>
-                <div>
-                  <b>Dak</b>
-                  {roof.azimuth}
-                </div>
+              <div className="kpis" style={{ marginTop: 10 }}>
+                <div><b>Panelen</b>{layout.panels.length}</div>
+                <div><b>Vermogen</b>{totalWp} Wp</div>
+                <div><b>Rijen</b>{layout.rowsCount}</div>
+                <div><b>Rails</b>{layout.rails.length}</div>
+                <div><b>Haken</b>{layout.hooks.length}</div>
+                <div><b>Dak</b>{roof.azimuth}</div>
               </div>
             </div>
 
             <div className="card">
               <h3>Strings</h3>
-              <div className="kpis">
-                <div>
-                  <b>nMin</b>
-                  {strings.nMin || "-"}
-                </div>
-                <div>
-                  <b>nMax</b>
-                  {strings.nMax || "-"}
-                </div>
-                <div>
-                  <b>Serie</b>
-                  {strings.nSeries ?? "-"}
-                </div>
-                <div>
-                  <b>#strings</b>
-                  {strings.strings.length || "-"}
-                </div>
-                <div>
-                  <b>Voc</b>
-                  {strings.vocString ? `${strings.vocString.toFixed(0)} V` : "-"}
-                </div>
-                <div>
-                  <b>Status</b>
-                  {strings.ok ? "OK" : "Check"}
-                </div>
+              <div className="kpis" style={{ marginTop: 10 }}>
+                <div><b>nMin</b>{strings.nMin || "-"}</div>
+                <div><b>nMax</b>{strings.nMax || "-"}</div>
+                <div><b>Serie</b>{strings.nSeries ?? "-"}</div>
+                <div><b>#strings</b>{strings.strings.length || "-"}</div>
+                <div><b>Voc</b>{strings.vocString ? `${strings.vocString.toFixed(0)} V` : "-"}</div>
+                <div><b>Status</b>{strings.ok ? "OK" : "Check"}</div>
               </div>
-              <p className="muted">{strings.message}</p>
-              {strings.strings.length > 0 && (
-                <p className="muted">Verdeling: {strings.strings.map((s, i) => `S${i + 1}: ${s}`).join(" • ")}</p>
-              )}
+              <p className="muted" style={{ marginTop: 10 }}>{strings.message}</p>
+              {strings.strings.length > 0 && <p className="muted">Verdeling: {strings.strings.map((s, i) => `S${i + 1}: ${s}`).join(" • ")}</p>}
             </div>
 
-            <DrawingSvg
-              roof={roof}
-              layout={layout}
-              cable={cable}
-              onTogglePanel={togglePanel}
-              pickingExit={pickingExit}
-              onPickExit={(x, y) => {
-                setCableSettings({ ...cableSettings, exitCustom: { x, y } });
-                setPickingExit(false);
-              }}
-            />
+            <div className="card">
+              <DrawingSvg
+                roof={roof}
+                layout={layout}
+                cable={cable}
+                onTogglePanel={togglePanel}
+                pickingExit={pickingExit}
+                onPickExit={(x, y) => {
+                  setCableSettings({ ...cableSettings, exitCustom: { x, y } });
+                  setPickingExit(false);
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
