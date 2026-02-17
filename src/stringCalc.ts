@@ -3,10 +3,10 @@ import type { InverterInput, PanelInput } from "./types";
 export type StringResult = {
   nMin: number;
   nMax: number;
-  nSeries: number | null;     // gekozen aantal panelen in serie
-  strings: number[];          // per string aantal panelen
+  nSeries: number | null;
+  strings: number[];
   totalPanels: number;
-  vocString: number | null;   // Voc van standaard string
+  vocString: number | null;
   ok: boolean;
   message: string;
 };
@@ -17,10 +17,7 @@ export function calcStrings(totalPanels: number, panel: PanelInput, inv: Inverte
   const vMax = Number(inv.vocMax || 0);
 
   if (!totalPanels || totalPanels <= 0) {
-    return {
-      nMin: 0, nMax: 0, nSeries: null, strings: [], totalPanels,
-      vocString: null, ok: false, message: "Geen panelen geselecteerd."
-    };
+    return { nMin: 0, nMax: 0, nSeries: null, strings: [], totalPanels, vocString: null, ok: false, message: "Geen panelen geselecteerd." };
   }
   if (!vocP || vocP <= 0 || !vMin || !vMax || vMax <= 0) {
     return {
@@ -40,7 +37,6 @@ export function calcStrings(totalPanels: number, panel: PanelInput, inv: Inverte
     };
   }
 
-  // kies standaard nSeries = min(nMax, totalPanels) zodat je weinig strings hebt
   const nSeries = Math.min(nMax, totalPanels);
   const stringsCount = Math.ceil(totalPanels / nSeries);
   const strings: number[] = [];
@@ -51,7 +47,6 @@ export function calcStrings(totalPanels: number, panel: PanelInput, inv: Inverte
     remain -= take;
   }
 
-  // check: elke string moet >= nMin
   const bad = strings.some(s => s < nMin);
   const ok = !bad;
 
