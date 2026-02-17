@@ -3,7 +3,6 @@ import * as XLSX from "xlsx";
 import {
   PanelProduct,
   InverterProduct,
-  makeId,
   getPanels,
   getInverters,
   upsertPanels,
@@ -41,13 +40,16 @@ function toNumber(v: any): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function makeId(brand: string, model: string) {
+  return `${brand.trim()}|${model.trim()}`;
+}
+
 function parsePanels(rows: Record<string, any>[]): PanelProduct[] {
   const out: PanelProduct[] = [];
 
   for (const r of rows) {
     const brand = String(pick(r, ["brand", "merk", "fabrikant"]) ?? "").trim();
     const model = String(pick(r, ["model", "type", "naam", "name"]) ?? "").trim();
-
     if (!brand || !model) continue;
 
     const wp = toNumber(pick(r, ["wp", "pmax", "vermogenwp"])) ?? 0;
@@ -56,9 +58,8 @@ function parsePanels(rows: Record<string, any>[]): PanelProduct[] {
     const vmp_v = toNumber(pick(r, ["vmpp", "vmp", "vmp_v", "mppvoltage"]));
     const imp_a = toNumber(pick(r, ["impp", "imp", "imp_a", "mppcurrent"]));
 
-    // Excel kan mm of m bevatten — we proberen beide
-    let width_m = toNumber(pick(r, ["width_m", "breedte_m", "widthm"])) ?? undefined;
-    let height_m = toNumber(pick(r, ["height_m", "hoogte_m", "heightm"])) ?? undefined;
+    let width_m = toNumber(pick(r, ["width_m", "breedte_m", "widthm"]));
+    let height_m = toNumber(pick(r, ["height_m", "hoogte_m", "heightm"]));
 
     const width_mm = toNumber(pick(r, ["width_mm", "breedte_mm", "widthmm", "breedtemm"]));
     const height_mm = toNumber(pick(r, ["height_mm", "hoogte_mm", "heightmm", "hoogtemm"]));
@@ -102,7 +103,7 @@ function parseInverters(rows: Record<string, any>[]): InverterProduct[] {
     if (!brand || !model) continue;
 
     const voc_min_v = toNumber(pick(r, ["voc_min_v", "vdcmin", "min_dc_v", "minDC", "dcmin"])) ?? 0;
-    const voc_max_v = toNumber(pick(r, ["voc_max_v", "vdcmax", "max_dc_v", "maxDC", "dcmax", "maxdc"])) ?? 0;
+    const voc_max_v = toNumber(pick(r, ["voc_max_v", "vdcmax", "max_dc_v", "maxDC", "dcmax", "maxdc", "maxdcv"])) ?? 0;
 
     const mppt_min_v = toNumber(pick(r, ["mppt_min_v", "mpptmin", "mpptminv"]));
     const mppt_max_v = toNumber(pick(r, ["mppt_max_v", "mpptmax", "mpptmaxv"]));
@@ -142,17 +143,14 @@ async function readExcel(file: File): Promise<{ panels: PanelProduct[]; inverter
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
 
-  // we nemen sheet1 als basis — als je later “Panels”/“Inverters” tabs gebruikt kunnen we uitbreiden
+  // sheet1 als basis
   const sheetName = wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: "" });
 
-  // We proberen uit dezelfde sheet zowel panels als inverters te detecteren
-  // op basis van aanwezige kolommen.
   const hasPanelCols =
     rows.length &&
-    (Object.keys(rows[0]).some((k) => norm(k).includes("wp")) ||
-      Object.keys(rows[0]).some((k) => norm(k).includes("voc")));
+    (Object.keys(rows[0]).some((k) => norm(k).includes("wp")) || Object.keys(rows[0]).some((k) => norm(k).includes("voc")));
 
   const hasInverterCols =
     rows.length &&
@@ -194,7 +192,7 @@ export default function AdminProducts() {
 
       setMsg(
         `Excel gelezen. Panels: ${panels.length} — Inverters: ${inverters.length}. ` +
-          `Klik "Importeer lokaal" om samen te voegen.`
+          `Klik "Importeer lokaal (merge)" om samen te voegen met de huidige lijst.`
       );
     } catch (e: any) {
       setMsg(e?.message || "Excel import mislukt");
@@ -210,11 +208,16 @@ export default function AdminProducts() {
       if (!importedPanels.length && !importedInverters.length) {
         throw new Error("Geen producten om te importeren (Excel bevatte niets herkenbaar).");
       }
+
       if (importedPanels.length) upsertPanels(importedPanels);
       if (importedInverters.length) upsertInverters(importedInverters);
 
       await refreshLocalCounts();
-      setMsg(`✅ Lokaal geïmporteerd. Local panels=${getPanels().length}, inverters=${getInverters().length}`);
+
+      setMsg(
+        `✅ Lokaal geïmporteerd. Local panels=${getPanels().length}, inverters=${getInverters().length}. ` +
+          `Nu kan je "Push to Cloud" doen zodat iedereen dezelfde lijst krijgt.`
+      );
     } catch (e: any) {
       setMsg(e?.message || "Import lokaal mislukt");
     } finally {
@@ -227,10 +230,17 @@ export default function AdminProducts() {
     setMsg("");
     try {
       if (!adminUser || !adminPass) throw new Error("Admin user/pass ontbreekt.");
+      if (getPanels().length === 0 && getInverters().length === 0) {
+        throw new Error("Je lokale lijst is leeg. Pull eerst cloud of importeer eerst Excel.");
+      }
+
       localStorage.setItem(LS_ADMIN_USER, adminUser);
       localStorage.setItem(LS_ADMIN_PASS, adminPass);
 
+      // pusht de huidige lokale lijst (panels + inverters) naar KV
       await pushProductsToCloud(adminUser, adminPass);
+
+      await refreshLocalCounts();
       setMsg("✅ Naar cloud gepusht. Alle gebruikers krijgen nu dezelfde productlijst.");
     } catch (e: any) {
       setMsg(e?.message || "Push naar cloud mislukt");
@@ -243,6 +253,7 @@ export default function AdminProducts() {
     setBusy(true);
     setMsg("");
     try {
+      // laadt cloud → lokale cache/localStorage
       await initProductsFromCloud();
       await refreshLocalCounts();
       setMsg("✅ Cloud geladen naar lokaal (cache).");
@@ -253,13 +264,15 @@ export default function AdminProducts() {
     }
   }
 
-  async function clearLocal() {
+  async function clearLocalAll() {
     clearProducts();
     await refreshLocalCounts();
     setImportedPanels([]);
     setImportedInverters([]);
     setMsg("Local storage gewist (terug naar defaults).");
   }
+
+  const canImport = importedPanels.length > 0 || importedInverters.length > 0;
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
@@ -272,23 +285,12 @@ export default function AdminProducts() {
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={label}>
             Admin user
-            <input
-              style={input}
-              value={adminUser}
-              onChange={(e) => setAdminUser(e.target.value)}
-              placeholder="bv. admin4"
-            />
+            <input style={input} value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder="bv. admin" />
           </label>
 
           <label style={label}>
             Admin pass
-            <input
-              style={input}
-              value={adminPass}
-              onChange={(e) => setAdminPass(e.target.value)}
-              placeholder="••••••••"
-              type="password"
-            />
+            <input style={input} value={adminPass} onChange={(e) => setAdminPass(e.target.value)} placeholder="••••••••" type="password" />
           </label>
 
           <button style={btn} disabled={busy} onClick={pullCloud}>
@@ -302,6 +304,10 @@ export default function AdminProducts() {
 
         <div style={{ marginTop: 10, opacity: 0.8 }}>
           Local panels: <b>{localPanelsCount}</b> — Local inverters: <b>{localInvertersCount}</b>
+        </div>
+
+        <div style={{ marginTop: 8, opacity: 0.7 }}>
+          Tip: eerst <b>Pull</b> (laatste cloud versie) → dan Excel import/merge → dan <b>Push</b>.
         </div>
       </div>
 
@@ -323,10 +329,10 @@ export default function AdminProducts() {
           </div>
 
           <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
-            <button style={btn} disabled={busy} onClick={importLocal}>
+            <button style={btn} disabled={busy || !canImport} onClick={importLocal}>
               Importeer lokaal (merge)
             </button>
-            <button style={btnDanger} disabled={busy} onClick={clearLocal}>
+            <button style={btnDanger} disabled={busy} onClick={clearLocalAll}>
               Clear lokaal
             </button>
           </div>
@@ -413,4 +419,3 @@ const msgBox: React.CSSProperties = {
   borderRadius: 10,
   background: "#fff",
 };
-
